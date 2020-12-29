@@ -2,6 +2,13 @@
 **Fork**: This fork adds several features in preprocessing and checkpoint saving for use with 16-bit images.
 
   Preprocessing:
+
+  Clip values function added for clipping outlying values in images. 
+  
+  Minmax normalization added.
+
+  Changes made in base_dataset.py and aligned_dataset.py.
+
   
 
   Added files:
