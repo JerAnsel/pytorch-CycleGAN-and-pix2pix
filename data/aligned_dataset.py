@@ -1,7 +1,8 @@
-import os
+import os.path
 from data.base_dataset import BaseDataset, get_params, get_transform
 from data.image_folder import make_dataset
 from PIL import Image
+import numpy as np
 
 
 class AlignedDataset(BaseDataset):
@@ -37,9 +38,12 @@ class AlignedDataset(BaseDataset):
             B_paths (str) - - image paths (same as A_paths)
         """
         # read a image given a random integer index
+        #import pdb; pdb.set_trace()
         AB_path = self.AB_paths[index]
-        AB = Image.open(AB_path).convert('RGB')
+        AB = Image.open(AB_path)#.convert('RGB')
         # split AB image into A and B
+        ABtens = np.array(AB)
+        #import pdb; pdb.set_trace()
         w, h = AB.size
         w2 = int(w / 2)
         A = AB.crop((0, 0, w2, h))
@@ -47,11 +51,11 @@ class AlignedDataset(BaseDataset):
 
         # apply the same transform to both A and B
         transform_params = get_params(self.opt, A.size)
-        A_transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1))
-        B_transform = get_transform(self.opt, transform_params, grayscale=(self.output_nc == 1))
+        A_transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1), clip_values = self.clip_values, minmax_values= self.minmax_values, A=True)
+        B_transform = get_transform(self.opt, transform_params, grayscale=(self.output_nc == 1), clip_values = self.clip_values, minmax_values= self.minmax_values, A=False)
 
-        A = A_transform(A)
-        B = B_transform(B)
+        A = A_transform(A).float()
+        B = B_transform(B).float()
 
         return {'A': A, 'B': B, 'A_paths': AB_path, 'B_paths': AB_path}
 

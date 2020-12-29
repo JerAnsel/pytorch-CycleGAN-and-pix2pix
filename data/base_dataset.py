@@ -4,10 +4,12 @@ It also includes common transformation functions (e.g., get_transform, __scale_w
 """
 import random
 import numpy as np
+import cv2
 import torch.utils.data as data
 from PIL import Image
 import torchvision.transforms as transforms
 from abc import ABC, abstractmethod
+import os
 
 
 class BaseDataset(data.Dataset, ABC):
@@ -28,6 +30,20 @@ class BaseDataset(data.Dataset, ABC):
         """
         self.opt = opt
         self.root = opt.dataroot
+
+        if 'clip' in opt.preprocess:    # Set dataset dependent variables for preprocessing.
+            self.clip_values = self.get_clip_values() 
+        else:
+            self.clip_values = None
+        
+        if 'minmax' in opt.preprocess:
+            if 'clip' in opt.preprocess:
+                self.minmax_values = self.clip_values
+            else:
+                self.minmax_values = self.get_minmax_values() 
+        else:
+            self.minmax_values = None
+        
 
     @staticmethod
     def modify_commandline_options(parser, is_train):
@@ -58,6 +74,53 @@ class BaseDataset(data.Dataset, ABC):
             a dictionary of data with their names. It ususally contains the data itself and its metadata information.
         """
         pass
+    
+    def get_clip_values(self):
+
+        first_folder = os.path.join(self.root, os.listdir(self.root)[0])
+        first_file = os.listdir(first_folder)[0]
+
+        temp = Image.open(os.path.join(first_folder,first_file))
+        nump = np.array(temp)
+        hist = np.unique(nump)
+
+        for folder in os.listdir(self.root):
+
+            files = os.listdir(os.path.join(self.root, folder))
+
+            for f in files:
+                temp = Image.open(os.path.join(self.root,folder, f))
+                nump = np.ndarray.flatten(np.array(temp))
+                combined = np.concatenate((hist, nump))
+                hist = np.unique(combined)
+
+        bottom_value = hist[int(len(hist)*0.1)]
+        top_value = hist[int(len(hist)*(1-0.1))]
+
+        return top_value, bottom_value 
+
+    def get_minmax_values(self):
+
+        first_folder = os.path.join(self.root, os.listdir(self.root)[0])
+        first_file = os.listdir(first_folder)[0]
+
+        temp = Image.open(os.path.join(first_folder,first_file))
+        nump = np.array(temp)
+        min = np.min(nump)
+        max = np.max(nump)
+
+        for folder in os.listdir(self.root):
+
+            files = os.listdir(os.path.join(self.root, folder))
+
+            for f in files:
+                temp = Image.open(os.path.join(self.root,folder, f))
+                nump = np.ndarray.flatten(np.array(temp))
+                min = min if min < np.min(nump) else np.min(nump)
+                max = max if max > np.max(nump) else np.max(nump)
+                
+        return max, min 
+
 
 
 def get_params(opt, size):
@@ -78,8 +141,13 @@ def get_params(opt, size):
     return {'crop_pos': (x, y), 'flip': flip}
 
 
-def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
+def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True, clip_values = None, minmax_values = None, A = True):
     transform_list = []
+    #import pdb; pdb.set_trace()
+    
+    if 'keep_values' in opt.preprocess:
+        grayscale = convert = False
+
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
     if 'resize' in opt.preprocess:
@@ -102,13 +170,26 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
             transform_list.append(transforms.RandomHorizontalFlip())
         elif params['flip']:
             transform_list.append(transforms.Lambda(lambda img: __flip(img, params['flip'])))
-
+    
+    if 'clip' in opt.preprocess:
+        transform_list.append(transforms.Lambda(lambda img: __clip(img, clip_values)))
+    if 'minmax' in opt.preprocess:
+        transform_list.append(transforms.Lambda(lambda img: __minmax(img, minmax_values)))
+    
     if convert:
         transform_list += [transforms.ToTensor()]
         if grayscale:
             transform_list += [transforms.Normalize((0.5,), (0.5,))]
         else:
             transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+    
+    if not A and 'sobel' in opt.preprocess:
+        transform_list.append(transforms.Lambda(lambda img: __sobel(img)))
+
+
+    if 'keep_values' in opt.preprocess:
+        transform_list += [transforms.ToTensor()]
+
     return transforms.Compose(transform_list)
 
 
@@ -122,6 +203,24 @@ def __make_power_2(img, base, method=Image.BICUBIC):
     __print_size_warning(ow, oh, w, h)
     return img.resize((w, h), method)
 
+def __sobel(image):
+    
+    Nimg = np.array(image)
+
+    sobXImg = cv2.Sobel(Nimg, cv2.CV_64F, 1, 0, ksize=3)
+
+    sobYImg = cv2.Sobel(Nimg, cv2.CV_64F, 0, 1, ksize=3)
+
+    sobMagnitude = np.sqrt(np.power(sobXImg,2) + np.power(sobYImg,2))
+
+    return Image.fromarray(sobMagnitude)    # .convert(mode='L')
+
+
+def __clip(img, clip_values):
+    return Image.fromarray(np.clip(img, clip_values[1], clip_values[0]))
+
+def __minmax(img, minmax_values):
+    return Image.fromarray((np.array(img)-minmax_values[1])/(minmax_values[0] - minmax_values[1]))
 
 def __scale_width(img, target_size, crop_size, method=Image.BICUBIC):
     ow, oh = img.size

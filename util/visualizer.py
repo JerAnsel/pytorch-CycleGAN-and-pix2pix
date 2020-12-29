@@ -5,6 +5,8 @@ import ntpath
 import time
 from . import util, html
 from subprocess import Popen, PIPE
+from PIL import Image
+import imbest
 
 
 if sys.version_info[0] == 2:
@@ -34,7 +36,7 @@ def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256):
 
     for label, im_data in visuals.items():
         im = util.tensor2im(im_data)
-        image_name = '%s_%s.png' % (name, label)
+        image_name = '%s_%s.png' % (name, label) ##
         save_path = os.path.join(image_dir, image_name)
         util.save_image(im, save_path, aspect_ratio=aspect_ratio)
         ims.append(image_name)
@@ -49,11 +51,12 @@ class Visualizer():
     It uses a Python library 'visdom' for display, and a Python library 'dominate' (wrapped in 'HTML') for creating HTML files with images.
     """
 
-    def __init__(self, opt):
+    def __init__(self, opt, minmax_values):
         """Initialize the Visualizer class
 
         Parameters:
             opt -- stores all the experiment flags; needs to be a subclass of BaseOptions
+            minmax_values -- takes in minmax values if existing for use in postprocessing
         Step 1: Cache the training/test options
         Step 2: connect to a visdom server
         Step 3: create an HTML object for saveing HTML filters
@@ -80,6 +83,10 @@ class Visualizer():
             util.mkdirs([self.web_dir, self.img_dir])
         # create a logging file to store training losses
         self.log_name = os.path.join(opt.checkpoints_dir, opt.name, 'loss_log.txt')
+
+        # Added by Jeremy Ansel
+        self.minmax_values = minmax_values
+
         with open(self.log_name, "a") as log_file:
             now = time.strftime("%c")
             log_file.write('================ Training Loss (%s) ================\n' % now)
@@ -157,8 +164,14 @@ class Visualizer():
             self.saved = True
             # save images to the disk
             for label, image in visuals.items():
-                image_numpy = util.tensor2im(image)
                 img_path = os.path.join(self.img_dir, 'epoch%.3d_%s.png' % (epoch, label))
+                if 'turbulence' in title and 'real' in label:   # if saving  copy of real images during turbulence training, use imbest.
+                    image = util.tensorTo16BitIm(image, self.minmax_values)
+                    image_numpy = imbest.imbest(np.asarray(image.cpu()).astype(np.int16))
+                    image_tosave = Image.fromarray(image_numpy.reshape((image_numpy.shape[2], image_numpy.shape[3])))
+                    image_tosave.save(img_path)
+                    continue
+                image_numpy = util.tensor2im(image)
                 util.save_image(image_numpy, img_path)
 
             # update website

@@ -1,4 +1,12 @@
 
+**Fork**: This fork adds several features in preprocessing and checkpoint saving for use with 16-bit images.
+
+  Preprocessing:
+  
+
+  Added files:
+
+
 <img src='imgs/horse2zebra.gif' align="right" width=384>
 
 <br><br><br>

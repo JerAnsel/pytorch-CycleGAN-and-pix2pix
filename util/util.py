@@ -26,6 +26,12 @@ def tensor2im(input_image, imtype=np.uint8):
         image_numpy = input_image
     return image_numpy.astype(imtype)
 
+def tensorTo16BitIm(image, minmax_values):
+
+    if not minmax_values:
+        return image 
+    
+    return image * (minmax_values[0] - minmax_values[1]) + minmax_values[1] 
 
 def diagnose_network(net, name='network'):
     """Calculate and print the mean of average absolute(gradients)
